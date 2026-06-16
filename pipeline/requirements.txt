@@ -1,21 +1,13 @@
-# Core scientific — no C++ build deps, works on Windows and Linux
-xarray==2024.6.0
-numpy==1.26.4
+# All pure-Python wheels — no C++ build dependencies, works on Windows and Linux.
+# Install in a virtual environment to avoid conflicts with system packages:
+#   python -m venv .venv
+#   .venv\Scripts\activate    (Windows)
+#   source .venv/bin/activate (Linux/macOS)
+#   pip install -r requirements.txt
 
-# netCDF4: pinned to >=1.7.2 to avoid the yanked 1.7.1 (OPeNDAP curl issues)
+xarray>=2024.6.0
+numpy>=1.26.4
 netCDF4>=1.7.2
-
-# Pillow for PNG tile output
-Pillow==10.4.0
-
-# matplotlib: >=3.9.2 avoids the yanked 3.9.1 Windows segfault issue
+Pillow>=10.4.0
 matplotlib>=3.9.2
-
-# HTTP for downloading from NOAA
-requests==2.32.3
-
-# ── Removed from original ───────────────────────────────────────────
-# scipy      — pulled pythran (C++ transpiler) as build dep -> Windows crash
-# h5py       — only for HDF5; ERSSTv5 is NetCDF4, not needed
-# rioxarray  — only for GDAL CRS ops; replaced with xarray native interp
-# GDAL       — hard to install on Windows; tile slicing is pure Python now
+requests>=2.32.3
