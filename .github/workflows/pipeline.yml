@@ -44,53 +44,49 @@ jobs:
           cd pipeline
           python process.py
 
-      - name: Determine release tag
-        id: tag
+      - name: Determine month label
+        id: label
         run: |
           if [ -n "${{ github.event.inputs.year_month }}" ]; then
-            echo "tag=tiles-${{ github.event.inputs.year_month }}" >> $GITHUB_OUTPUT
+            echo "month=${{ github.event.inputs.year_month }}" >> $GITHUB_OUTPUT
           else
-            echo "tag=tiles-$(date -u +%Y-%m)" >> $GITHUB_OUTPUT
+            echo "month=$(date -u +%Y-%m)" >> $GITHUB_OUTPUT
           fi
 
-      - name: Delete existing release for this month (if re-running)
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Checkout tiles branch (orphan if first run)
         run: |
-          gh release delete ${{ steps.tag.outputs.tag }} --yes --repo ${{ github.repository }} || true
+          git fetch origin tiles 2>/dev/null || true
+          if git show-ref --verify --quiet refs/remotes/origin/tiles; then
+            git checkout tiles
+          else
+            git checkout --orphan tiles
+            git rm -rf . --quiet || true
+          fi
 
-      - name: Flatten tile files for GitHub Release upload
+      - name: Copy tiles into branch
         run: |
-          # GitHub Releases can't store directories.
-          # Rename z/x/y.png -> layer_z_x_y.png so all tiles are flat files.
-          mkdir -p pipeline/flat
-          for layer in sst anomaly; do
-            find pipeline/output/${layer} -name "*.png" | while read f; do
-              # f = pipeline/output/sst/0/0/0.png
-              rel="${f#pipeline/output/${layer}/}"   # 0/0/0.png
-              flat="${rel//\//_}"                     # 0_0_0.png
-              cp "$f" "pipeline/flat/${layer}_${flat}"
-            done
-          done
-          cp pipeline/output/latest.json pipeline/flat/latest.json
-          echo "Total files: $(ls pipeline/flat | wc -l)"
+          MONTH="${{ steps.label.outputs.month }}"
+          mkdir -p "tiles/${MONTH}/sst" "tiles/${MONTH}/anomaly"
+          cp -r pipeline/output/sst/*     "tiles/${MONTH}/sst/"
+          cp -r pipeline/output/anomaly/* "tiles/${MONTH}/anomaly/"
+          cp pipeline/output/latest.json  "tiles/latest.json"
 
-      - name: Upload tiles to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: |
-          gh release create ${{ steps.tag.outputs.tag }} \
-            --repo ${{ github.repository }} \
-            --title "Tiles ${{ steps.tag.outputs.tag }}" \
-            --notes "Auto-generated SST tiles for ${{ steps.tag.outputs.tag }}" \
-            pipeline/flat/*
-
-      - name: Update latest.json in repo
-        run: |
+          # Also copy latest.json back for the web app
+          mkdir -p web/public
           cp pipeline/output/latest.json web/public/latest.json
+
+      - name: Commit and push tiles branch
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tiles/
+          git diff --staged --quiet || git commit -m "tiles: ${{ steps.label.outputs.month }}"
+          git push origin tiles
+
+      - name: Switch back to main and update latest.json
+        run: |
+          git checkout main
+          cp pipeline/output/latest.json web/public/latest.json
           git add web/public/latest.json
-          git diff --staged --quiet || git commit -m "chore: update latest.json [${{ steps.tag.outputs.tag }}]"
-          git push
+          git diff --staged --quiet || git commit -m "chore: update latest.json [${{ steps.label.outputs.month }}]"
+          git push origin main
