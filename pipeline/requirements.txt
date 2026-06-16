@@ -1,0 +1,19 @@
+# Core geospatial / scientific
+xarray==2024.6.0
+numpy==1.26.4
+scipy==1.13.1
+netCDF4==1.7.1
+h5py==3.11.0
+rioxarray==0.17.0
+
+# GDAL for reprojection and tile generation
+# Note: GDAL binary must be available in the environment.
+# GitHub Actions ubuntu-latest includes gdal-bin; gdal Python bindings below.
+GDAL==3.8.4
+
+# Image generation for colored tile PNGs
+Pillow==10.4.0
+matplotlib==3.9.1
+
+# HTTP for downloading from NOAA
+requests==2.32.3

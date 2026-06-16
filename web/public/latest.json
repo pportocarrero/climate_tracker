@@ -1,0 +1,17 @@
+{
+  "date":        "2025-12",
+  "release_tag": "tiles-2025-12",
+  "generated":   "2025-12-01T06:30:00Z",
+  "indices": {
+    "nino12": 0.0,
+    "nino3":  0.0,
+    "nino34": 0.0,
+    "nino4":  0.0
+  },
+  "condition": "neutral",
+  "tile_sets": {
+    "sst":     "sst/{z}/{x}/{y}.png",
+    "anomaly": "anomaly/{z}/{x}/{y}.png"
+  },
+  "_note": "This is a placeholder. It will be overwritten by the GitHub Actions pipeline after the first successful run."
+}

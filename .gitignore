@@ -1,1 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Pipeline outputs (never commit tiles — they go to GitHub Releases)
+pipeline/output/
+pipeline/*.nc
+pipeline/*.tif
+pipeline/*.png
+pipeline/climo_*.nc
+
+# Node / React
+node_modules/
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+enso-viewer.zip
 .credentials.txt
+credentials.txt

@@ -1,0 +1,83 @@
+name: Daily pipeline
+
+on:
+  schedule:
+    # Every day at 06:30 UTC (NOAA updates ERSSTv5 by ~06:00 UTC)
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI for testing
+    inputs:
+      year_month:
+        description: 'Process a specific month (YYYY-MM). Leave blank for latest.'
+        required: false
+        default: ''
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          lfs: true   # Pull Git LFS files (climatology baseline)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd pipeline
+          pip install -r requirements.txt
+
+      - name: Run processing pipeline
+        env:
+          YEAR_MONTH: ${{ github.event.inputs.year_month }}
+        run: |
+          cd pipeline
+          python process.py
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          # Tag format: tiles-YYYY-MM
+          if [ -n "${{ github.event.inputs.year_month }}" ]; then
+            echo "tag=tiles-${{ github.event.inputs.year_month }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=tiles-$(date -u +%Y-%m)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete existing release for this month (if re-running)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          gh release delete ${{ steps.tag.outputs.tag }} --yes --repo ${{ github.repository }} || true
+
+      - name: Upload tiles to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # Create release and attach all output files
+          gh release create ${{ steps.tag.outputs.tag }} \
+            --repo ${{ github.repository }} \
+            --title "Tiles ${{ steps.tag.outputs.tag }}" \
+            --notes "Auto-generated SST tiles for ${{ steps.tag.outputs.tag }}" \
+            pipeline/output/*
+
+      - name: Update latest.json in repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          # Commit latest.json so the web app always knows the current release tag
+          cp pipeline/output/latest.json web/public/latest.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/public/latest.json
+          git diff --staged --quiet || git commit -m "chore: update latest.json [${{ steps.tag.outputs.tag }}]"
+          git push

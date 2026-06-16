@@ -1,0 +1,75 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id":    "nino12",
+        "label": "Niño 1+2",
+        "color": [180, 180, 180]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-90, -10], [-80, -10], [-80,  0], [-90,  0], [-90, -10]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id":    "nino3",
+        "label": "Niño 3",
+        "color": [239, 159,  39]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-150, -5], [-90, -5], [-90, 5], [-150, 5], [-150, -5]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id":    "nino34",
+        "label": "Niño 3.4",
+        "color": [226,  75,  74]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-170, -5], [-120, -5], [-120, 5], [-170, 5], [-170, -5]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id":    "nino4",
+        "label": "Niño 4",
+        "color": [239, 159,  39]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [160, -5], [180, -5], [180, 5], [160, 5], [160, -5]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id":    "nino4-wrap",
+        "label": "",
+        "color": [239, 159,  39]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-180, -5], [-150, -5], [-150, 5], [-180, 5], [-180, -5]
+        ]]
+      }
+    }
+  ]
+}
