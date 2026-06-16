@@ -1,17 +1,16 @@
 {
-  "date":        "2025-12",
-  "release_tag": "tiles-2025-12",
-  "generated":   "2025-12-01T06:30:00Z",
+  "date": "2026-05",
+  "release_tag": "tiles-2026-05",
+  "generated": "2026-06-16T22:17:31.038589+00:00",
   "indices": {
-    "nino12": 0.0,
-    "nino3":  0.0,
-    "nino34": 0.0,
-    "nino4":  0.0
+    "nino12": NaN,
+    "nino3": NaN,
+    "nino34": NaN,
+    "nino4": NaN
   },
   "condition": "neutral",
   "tile_sets": {
-    "sst":     "sst/{z}/{x}/{y}.png",
+    "sst": "sst/{z}/{x}/{y}.png",
     "anomaly": "anomaly/{z}/{x}/{y}.png"
-  },
-  "_note": "This is a placeholder. It will be overwritten by the GitHub Actions pipeline after the first successful run."
+  }
 }
