@@ -183,6 +183,69 @@ def compute_nino_indices(anom_180: xr.DataArray) -> dict[str, float]:
     return results
 
 
+# ── Pure-numpy 2-D bilinear interpolation ────────────────────────────────────
+def numpy_bilinear(
+    data: np.ndarray,
+    src_lat: np.ndarray, src_lon: np.ndarray,
+    dst_lat: np.ndarray, dst_lon: np.ndarray,
+) -> np.ndarray:
+    """
+    Resample a 2-D (lat, lon) array to a new lat/lon grid using bilinear
+    interpolation — no scipy, no xarray interp, pure numpy only.
+
+    src_lat may be ascending or descending; dst_lat is assumed descending
+    (north-to-south, as required for image output).
+    """
+    # Ensure src arrays are ascending for np.interp / searchsorted
+    if src_lat[0] > src_lat[-1]:
+        data    = data[::-1, :]
+        src_lat = src_lat[::-1]
+    if src_lon[0] > src_lon[-1]:
+        data    = data[:, ::-1]
+        src_lon = src_lon[::-1]
+
+    H_src, W_src = data.shape
+    H_dst = len(dst_lat)
+    W_dst = len(dst_lon)
+
+    # Map destination coordinates to fractional source indices
+    lat_idx = np.interp(dst_lat, src_lat, np.arange(H_src))
+    lon_idx = np.interp(dst_lon, src_lon, np.arange(W_src))
+
+    # Integer floor indices and fractional weights
+    lat0 = np.clip(lat_idx.astype(int),     0, H_src - 2)
+    lon0 = np.clip(lon_idx.astype(int),     0, W_src - 2)
+    lat1 = lat0 + 1
+    lon1 = lon0 + 1
+
+    wlat = (lat_idx - lat0).astype(np.float32)   # (H_dst,)
+    wlon = (lon_idx - lon0).astype(np.float32)   # (W_dst,)
+
+    # Broadcast to (H_dst, W_dst)
+    wlat = wlat[:, np.newaxis]
+    wlon = wlon[np.newaxis, :]
+
+    # Fetch the four surrounding values
+    d00 = data[lat0[:, np.newaxis], lon0[np.newaxis, :]].astype(np.float32)
+    d01 = data[lat0[:, np.newaxis], lon1[np.newaxis, :]].astype(np.float32)
+    d10 = data[lat1[:, np.newaxis], lon0[np.newaxis, :]].astype(np.float32)
+    d11 = data[lat1[:, np.newaxis], lon1[np.newaxis, :]].astype(np.float32)
+
+    # NaN-safe bilinear blend
+    result = (
+        d00 * (1 - wlat) * (1 - wlon) +
+        d01 * (1 - wlat) *      wlon  +
+        d10 *      wlat  * (1 - wlon) +
+        d11 *      wlat  *      wlon
+    )
+
+    # If any of the four neighbours is NaN, mark result NaN (land/missing)
+    nan_mask = np.isnan(d00) | np.isnan(d01) | np.isnan(d10) | np.isnan(d11)
+    result[nan_mask] = np.nan
+
+    return result
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -220,13 +283,18 @@ def main() -> None:
     sst_180  = sst.assign_coords( lon=(sst.lon  - 180)).sortby("lon")
     anom_180 = anom.assign_coords(lon=(anom.lon - 180)).sortby("lon")
 
-    # Resample to a clean 720x360 grid (0.5deg) via xarray linear interp
-    # (no scipy needed — xarray's interp uses numpy internally)
+    # Resample to a clean 720x360 grid using pure numpy bilinear interpolation.
+    # xarray.interp(method="linear") requires scipy under the hood — we avoid
+    # that dependency entirely by doing the 2-D resample with numpy directly.
     lon_new = np.linspace(-179.75, 179.75, 720)
-    lat_new = np.linspace( 89.75, -89.75,  360)   # north -> south for image
+    lat_new = np.linspace(  89.75,  -89.75, 360)   # north -> south for image
 
-    sst_grid  = sst_180.interp( lon=lon_new, lat=lat_new, method="linear").values.astype(np.float32)
-    anom_grid = anom_180.interp(lon=lon_new, lat=lat_new, method="linear").values.astype(np.float32)
+    sst_grid  = numpy_bilinear(sst_180.values,
+                               sst_180.lat.values, sst_180.lon.values,
+                               lat_new, lon_new)
+    anom_grid = numpy_bilinear(anom_180.values,
+                               anom_180.lat.values, anom_180.lon.values,
+                               lat_new, lon_new)
 
     # 4. Nino indices
     indices   = compute_nino_indices(anom_180)
