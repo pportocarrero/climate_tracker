@@ -156,30 +156,38 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
 
 
 # ── Nino index computation ────────────────────────────────────────────────────
+def safe_float(val: float, fallback: float = 0.0) -> float:
+    """Return fallback if val is NaN or Inf — keeps JSON valid."""
+    import math
+    return fallback if (math.isnan(val) or math.isinf(val)) else round(val, 2)
+
 def compute_nino_indices(anom_180: xr.DataArray) -> dict[str, float]:
     """
     Average anomaly over each Nino bounding box.
-    anom_180 must have coordinates lon in -180..+180 and lat in descending order.
+    Uses numpy boolean masks instead of xarray .sel(slice) to avoid empty
+    selections when grid points don't align with region boundaries.
     """
+    lat  = anom_180.lat.values   # descending (88N -> 88S)
+    lon  = anom_180.lon.values   # -180 to +180
+    data = anom_180.values       # (lat, lon) float32
+
     results = {}
     for name, bb in NINO_REGIONS.items():
         lat_min, lat_max = bb["lat"]
         lon_min, lon_max = bb["lon"]
 
-        if lon_min > lon_max:
-            # Dateline-crossing region (Nino 4): split into two sub-regions
-            r1 = anom_180.sel(lat=slice(lat_max, lat_min), lon=slice(lon_min, 180))
-            r2 = anom_180.sel(lat=slice(lat_max, lat_min), lon=slice(-180, lon_max))
-            vals = np.concatenate([r1.values.ravel(), r2.values.ravel()])
-            val  = float(np.nanmean(vals))
-        else:
-            region = anom_180.sel(
-                lat=slice(lat_max, lat_min),   # descending lat
-                lon=slice(lon_min, lon_max),
-            )
-            val = float(np.nanmean(region.values))
+        lat_mask = (lat >= lat_min) & (lat <= lat_max)
 
-        results[name] = round(val, 2)
+        if lon_min > lon_max:
+            # Dateline-crossing (Nino 4): 160E..180 AND -180..-150
+            lon_mask = (lon >= lon_min) | (lon <= lon_max)
+        else:
+            lon_mask = (lon >= lon_min) & (lon <= lon_max)
+
+        region = data[np.ix_(lat_mask, lon_mask)]
+        val    = float(np.nanmean(region))
+        results[name] = safe_float(val)
+
     return results
 
 
@@ -326,7 +334,21 @@ def main() -> None:
             "anomaly": "anomaly/{z}/{x}/{y}.png",
         },
     }
-    (OUTPUT_DIR / "latest.json").write_text(json.dumps(manifest, indent=2))
+    # Use allow_nan=False to catch any NaN that slipped through — fails loudly
+    # rather than writing invalid JSON silently.
+    try:
+        json_str = json.dumps(manifest, indent=2, allow_nan=False)
+    except ValueError:
+        # Fallback: replace any NaN values with 0.0
+        import math
+        def sanitize(obj):
+            if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                return 0.0
+            if isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            return obj
+        json_str = json.dumps(sanitize(manifest), indent=2)
+    (OUTPUT_DIR / "latest.json").write_text(json_str)
 
     print(f"\nDone. Output -> {OUTPUT_DIR}")
 
