@@ -10,21 +10,19 @@ on:
         required: false
         default: ''
 
-# Give the built-in GITHUB_TOKEN write access to push commits
 permissions:
   contents: write
 
 jobs:
   process:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           lfs: true
-          # Use GITHUB_TOKEN so the bot can push back to the repo
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
@@ -62,22 +60,31 @@ jobs:
         run: |
           gh release delete ${{ steps.tag.outputs.tag }} --yes --repo ${{ github.repository }} || true
 
-      - name: Zip tile directories and upload to GitHub Release
+      - name: Flatten tile files for GitHub Release upload
+        run: |
+          # GitHub Releases can't store directories.
+          # Rename z/x/y.png -> layer_z_x_y.png so all tiles are flat files.
+          mkdir -p pipeline/flat
+          for layer in sst anomaly; do
+            find pipeline/output/${layer} -name "*.png" | while read f; do
+              # f = pipeline/output/sst/0/0/0.png
+              rel="${f#pipeline/output/${layer}/}"   # 0/0/0.png
+              flat="${rel//\//_}"                     # 0_0_0.png
+              cp "$f" "pipeline/flat/${layer}_${flat}"
+            done
+          done
+          cp pipeline/output/latest.json pipeline/flat/latest.json
+          echo "Total files: $(ls pipeline/flat | wc -l)"
+
+      - name: Upload tiles to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          cd pipeline/output
-          zip -r sst.zip sst/
-          zip -r anomaly.zip anomaly/
-          cd ../..
-
           gh release create ${{ steps.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
             --title "Tiles ${{ steps.tag.outputs.tag }}" \
             --notes "Auto-generated SST tiles for ${{ steps.tag.outputs.tag }}" \
-            pipeline/output/sst.zip \
-            pipeline/output/anomaly.zip \
-            pipeline/output/latest.json
+            pipeline/flat/*
 
       - name: Update latest.json in repo
         run: |
