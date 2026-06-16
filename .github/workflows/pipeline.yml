@@ -2,15 +2,17 @@ name: Daily pipeline
 
 on:
   schedule:
-    # Every day at 06:30 UTC (NOAA updates ERSSTv5 by ~06:00 UTC)
     - cron: '30 6 * * *'
   workflow_dispatch:
-    # Allow manual trigger from GitHub Actions UI for testing
     inputs:
       year_month:
         description: 'Process a specific month (YYYY-MM). Leave blank for latest.'
         required: false
         default: ''
+
+# Give the built-in GITHUB_TOKEN write access to push commits
+permissions:
+  contents: write
 
 jobs:
   process:
@@ -21,7 +23,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          lfs: true   # Pull Git LFS files (climatology baseline)
+          lfs: true
+          # Use GITHUB_TOKEN so the bot can push back to the repo
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,7 +49,6 @@ jobs:
       - name: Determine release tag
         id: tag
         run: |
-          # Tag format: tiles-YYYY-MM
           if [ -n "${{ github.event.inputs.year_month }}" ]; then
             echo "tag=tiles-${{ github.event.inputs.year_month }}" >> $GITHUB_OUTPUT
           else
@@ -63,13 +66,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # GitHub Releases can't upload directories — zip each tile set first
           cd pipeline/output
           zip -r sst.zip sst/
           zip -r anomaly.zip anomaly/
           cd ../..
 
-          # Create release with zips + manifest
           gh release create ${{ steps.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
             --title "Tiles ${{ steps.tag.outputs.tag }}" \
@@ -79,10 +80,7 @@ jobs:
             pipeline/output/latest.json
 
       - name: Update latest.json in repo
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # Commit latest.json so the web app always knows the current release tag
           cp pipeline/output/latest.json web/public/latest.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
