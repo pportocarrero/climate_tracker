@@ -59,16 +59,24 @@ jobs:
         run: |
           gh release delete ${{ steps.tag.outputs.tag }} --yes --repo ${{ github.repository }} || true
 
-      - name: Upload tiles to GitHub Release
+      - name: Zip tile directories and upload to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          # Create release and attach all output files
+          # GitHub Releases can't upload directories — zip each tile set first
+          cd pipeline/output
+          zip -r sst.zip sst/
+          zip -r anomaly.zip anomaly/
+          cd ../..
+
+          # Create release with zips + manifest
           gh release create ${{ steps.tag.outputs.tag }} \
             --repo ${{ github.repository }} \
             --title "Tiles ${{ steps.tag.outputs.tag }}" \
             --notes "Auto-generated SST tiles for ${{ steps.tag.outputs.tag }}" \
-            pipeline/output/*
+            pipeline/output/sst.zip \
+            pipeline/output/anomaly.zip \
+            pipeline/output/latest.json
 
       - name: Update latest.json in repo
         env:
