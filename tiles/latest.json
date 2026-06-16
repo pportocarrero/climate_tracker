@@ -1,0 +1,16 @@
+{
+  "date": "2026-05",
+  "release_tag": "tiles-2026-05",
+  "generated": "2026-06-16T22:59:17.038776+00:00",
+  "indices": {
+    "nino12": NaN,
+    "nino3": NaN,
+    "nino34": NaN,
+    "nino4": NaN
+  },
+  "condition": "neutral",
+  "tile_sets": {
+    "sst": "sst/{z}/{x}/{y}.png",
+    "anomaly": "anomaly/{z}/{x}/{y}.png"
+  }
+}
