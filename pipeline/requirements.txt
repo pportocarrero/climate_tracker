@@ -1,19 +1,21 @@
-# Core geospatial / scientific
+# Core scientific — no C++ build deps, works on Windows and Linux
 xarray==2024.6.0
 numpy==1.26.4
-scipy==1.13.1
-netCDF4==1.7.1
-h5py==3.11.0
-rioxarray==0.17.0
 
-# GDAL for reprojection and tile generation
-# Note: GDAL binary must be available in the environment.
-# GitHub Actions ubuntu-latest includes gdal-bin; gdal Python bindings below.
-GDAL==3.8.4
+# netCDF4: pinned to >=1.7.2 to avoid the yanked 1.7.1 (OPeNDAP curl issues)
+netCDF4>=1.7.2
 
-# Image generation for colored tile PNGs
+# Pillow for PNG tile output
 Pillow==10.4.0
-matplotlib==3.9.1
+
+# matplotlib: >=3.9.2 avoids the yanked 3.9.1 Windows segfault issue
+matplotlib>=3.9.2
 
 # HTTP for downloading from NOAA
 requests==2.32.3
+
+# ── Removed from original ───────────────────────────────────────────
+# scipy      — pulled pythran (C++ transpiler) as build dep -> Windows crash
+# h5py       — only for HDF5; ERSSTv5 is NetCDF4, not needed
+# rioxarray  — only for GDAL CRS ops; replaced with xarray native interp
+# GDAL       — hard to install on Windows; tile slicing is pure Python now

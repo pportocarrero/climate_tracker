@@ -35,6 +35,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
-enso-viewer.zip
-.credentials.txt
 credentials.txt
+enso-viewer.zip
+enso-viewer v2.zip
