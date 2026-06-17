@@ -1,0 +1,16 @@
+{
+  "date": "1997-07",
+  "release_tag": "tiles-1997-07",
+  "generated": "2026-06-17T21:28:12.415047+00:00",
+  "indices": {
+    "nino12": -0.53,
+    "nino3": -0.11,
+    "nino34": 0.14,
+    "nino4": -0.38
+  },
+  "condition": "neutral",
+  "tile_sets": {
+    "sst": "sst/{z}/{x}/{y}.png",
+    "anomaly": "anomaly/{z}/{x}/{y}.png"
+  }
+}
