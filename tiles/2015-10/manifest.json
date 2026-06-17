@@ -1,0 +1,16 @@
+{
+  "date": "2015-10",
+  "release_tag": "tiles-2015-10",
+  "generated": "2026-06-17T21:43:42.361582+00:00",
+  "indices": {
+    "nino12": 0.56,
+    "nino3": 0.82,
+    "nino34": 0.95,
+    "nino4": 0.06
+  },
+  "condition": "moderate-el-nino",
+  "tile_sets": {
+    "sst": "sst/{z}/{x}/{y}.png",
+    "anomaly": "anomaly/{z}/{x}/{y}.png"
+  }
+}
