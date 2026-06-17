@@ -393,7 +393,7 @@ def main() -> None:
     # (720x360 grid, 180 degrees / 360 rows = 0.5 deg/row). Rolling rows
     # upward (toward lower row-index / north) by N rows moves that row's
     # content to a position N*0.5 degrees further north on the rendered image.
-    LAT_CORRECTION_DEG = 3.0   # degrees north; tune and re-run as needed
+    LAT_CORRECTION_DEG = 1.5   # degrees north; tune and re-run as needed
     DEG_PER_ROW = 180.0 / sst_grid.shape[0]   # 0.5 for a 360-row grid
     roll_rows = int(round(LAT_CORRECTION_DEG / DEG_PER_ROW))
     print(f"   Applying north shift: {LAT_CORRECTION_DEG} deg = {roll_rows} rows")
