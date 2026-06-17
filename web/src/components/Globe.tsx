@@ -120,29 +120,6 @@ export function Globe({ manifest, layerState }: GlobeProps) {
         />
       )}
 
-      {/* ── TEMPORARY DEBUG: true equator + prime meridian reference lines ── */}
-      {/* Bright lines at exactly lat=0 and lon=0 using Cesium's own accurate
-          coordinate system (independent of our tile pipeline entirely).
-          Compare where the SST/anomaly layer's apparent equator band sits
-          relative to this line — any gap tells us the true remaining
-          offset in degrees, rather than guessing from continent shapes. */}
-      <Entity>
-        <PolylineGraphics
-          positions={Cartesian3.fromDegreesArray([-180, 0, 180, 0])}
-          width={2}
-          material={Color.LIME.withAlpha(0.9)}
-          clampToGround={true}
-        />
-      </Entity>
-      <Entity>
-        <PolylineGraphics
-          positions={Cartesian3.fromDegreesArray([0, -80, 0, 80])}
-          width={2}
-          material={Color.MAGENTA.withAlpha(0.9)}
-          clampToGround={true}
-        />
-      </Entity>
-
       {/* ── ENSO zone fills (semi-transparent, draped on surface) ── */}
       {layerState.showZones && NINO_ZONES.map((zone) => (
         <Entity key={`${zone.id}-fill`}>
