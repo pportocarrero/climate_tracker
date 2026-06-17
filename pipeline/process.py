@@ -369,7 +369,7 @@ def main() -> None:
     # mapping and our linear pixel slicing. Shifting the SAMPLING grid north
     # by this amount moves the rendered output north to compensate.
     # Adjust this single value and re-run if further correction is needed.
-    LAT_CORRECTION_DEG = 1.0   # degrees north; increase if still too far south
+    LAT_CORRECTION_DEG = 3.0   # degrees north; increase if still too far south
 
     lon_new = np.linspace(-179.75, 179.75, 720)
     lat_new = np.linspace(  89.75 + LAT_CORRECTION_DEG,
