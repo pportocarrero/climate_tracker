@@ -118,5 +118,10 @@
     "date": "2015-10",
     "condition": "moderate-el-nino",
     "nino34": 0.95
+  },
+  {
+    "date": "2015-11",
+    "condition": "moderate-el-nino",
+    "nino34": 1.05
   }
 ]
