@@ -153,5 +153,10 @@
     "date": "2020-09",
     "condition": "neutral",
     "nino34": -0.26
+  },
+  {
+    "date": "2021-01",
+    "condition": "neutral",
+    "nino34": -0.41
   }
 ]
