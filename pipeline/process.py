@@ -360,8 +360,25 @@ def main() -> None:
     # Resample to a clean 720x360 grid using pure numpy bilinear interpolation.
     # xarray.interp(method="linear") requires scipy under the hood — we avoid
     # that dependency entirely by doing the 2-D resample with numpy directly.
+    #
+    # LAT_CORRECTION_DEG: empirically-tuned nudge. The rendered SST/anomaly
+    # data appeared slightly south of its true position on the globe even
+    # after fixing the tiling scheme (GeographicTilingScheme, numberOfLevelZero
+    # Tiles) and land mask. Root cause not fully isolated — possibly a small
+    # residual half-cell convention difference between Cesium's tile-to-degree
+    # mapping and our linear pixel slicing. Shifting the SAMPLING grid north
+    # by this amount moves the rendered output north to compensate.
+    # Adjust this single value and re-run if further correction is needed.
+    LAT_CORRECTION_DEG = 1.0   # degrees north; increase if still too far south
+
     lon_new = np.linspace(-179.75, 179.75, 720)
-    lat_new = np.linspace(  89.75,  -89.75, 360)   # north -> south for image
+    lat_new = np.linspace(  89.75 + LAT_CORRECTION_DEG,
+                           -89.75 + LAT_CORRECTION_DEG, 360)   # north -> south for image
+    # global_land_mask requires latitude in [-90, 90] — clip after the shift
+    # so we stay within its valid domain. This only affects the few rows
+    # nearest the poles; the equatorial-region correction (the part that
+    # actually matters for ENSO) is unaffected.
+    lat_for_mask = np.clip(lat_new, -90.0, 90.0)
 
     sst_grid  = numpy_bilinear(sst_filled,
                                sst_180.lat.values, sst_180.lon.values,
@@ -373,7 +390,7 @@ def main() -> None:
     # Apply the precise 1km-resolution land mask — the ONLY source of truth
     # for what's hidden. ERSSTv5 is too coarse (2 degrees) to define its own
     # accurate coastline, so we don't rely on its native NaN pattern at all.
-    lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_new)
+    lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_for_mask)
     is_ocean = globe.is_ocean(lat_grid_mesh, lon_grid_mesh)   # (360, 720) bool
 
     sst_grid  = np.where(is_ocean, sst_grid,  np.nan)
