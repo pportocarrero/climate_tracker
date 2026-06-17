@@ -196,6 +196,55 @@ def compute_nino_indices(anom_180: xr.DataArray) -> dict[str, float]:
     return results
 
 
+# ── Fill NaN with nearest valid neighbor (pure numpy, no scipy) ──────────────
+def fill_nan_nearest(data: np.ndarray) -> np.ndarray:
+    """
+    Replace NaN values with the value of their nearest non-NaN neighbor.
+    Used to fill land/missing cells in the SOURCE grid before interpolation,
+    so bilinear blending never has to mix real numbers with NaN — that mixing
+    is what previously caused interpolation to wipe out nearby ocean cells.
+    The land mask (applied separately, at high resolution) is what actually
+    decides what's hidden in the final output; this fill is purely a
+    numerical stepping-stone so interpolation behaves like a normal smooth
+    field with no holes in it.
+
+    Implementation: iterative nearest-neighbor fill via 8-connected dilation.
+    Fast enough for a ~90x180 source grid (ERSSTv5 native resolution).
+    """
+    filled = data.copy()
+    mask   = np.isnan(filled)
+    if not mask.any():
+        return filled
+
+    # Repeatedly grow valid regions into NaN regions until none remain.
+    # Each pass: for every NaN cell, average any valid 8-connected neighbors.
+    max_passes = max(filled.shape) * 2   # generous upper bound, exits early
+    for _ in range(max_passes):
+        if not mask.any():
+            break
+        # Pad with NaN border so edge cells don't wrap incorrectly
+        padded = np.pad(filled, 1, mode="edge")
+        neighbor_stack = np.stack([
+            padded[0:-2, 0:-2], padded[0:-2, 1:-1], padded[0:-2, 2:],
+            padded[1:-1, 0:-2],                     padded[1:-1, 2:],
+            padded[2:,   0:-2], padded[2:,   1:-1], padded[2:,   2:],
+        ])
+        neighbor_mean = np.nanmean(neighbor_stack, axis=0)
+        still_nan     = np.isnan(filled)
+        fillable      = still_nan & ~np.isnan(neighbor_mean)
+        filled[fillable] = neighbor_mean[fillable]
+        new_mask = np.isnan(filled)
+        if new_mask.sum() == mask.sum():
+            # No progress this pass (isolated NaN with no valid neighbors
+            # anywhere nearby yet) — still shrinking overall, just slowly.
+            pass
+        mask = new_mask
+
+    # Any leftover NaN (extremely rare, e.g. fully isolated regions) -> 0
+    filled[np.isnan(filled)] = 0.0
+    return filled
+
+
 # ── Pure-numpy 2-D bilinear interpolation ────────────────────────────────────
 def numpy_bilinear(
     data: np.ndarray,
@@ -296,24 +345,35 @@ def main() -> None:
     sst_180  = sst.assign_coords( lon=(sst.lon  - 180)).sortby("lon")
     anom_180 = anom.assign_coords(lon=(anom.lon - 180)).sortby("lon")
 
+    # Fill NaN (land) in the SOURCE data before interpolating. ERSSTv5's
+    # native 2-degree grid already has NaN over land; if we interpolate with
+    # those NaNs present, numpy_bilinear's "any neighbor NaN -> NaN" rule
+    # kills huge swaths of near-shore OCEAN too (since most coastal points'
+    # 4 nearest 2-degree neighbors include at least one land cell). That
+    # conflicted with our separate fine-resolution land mask applied after,
+    # producing a patchwork of wrongly-hidden ocean and wrongly-shown land.
+    # Fix: fill source NaNs via nearest-neighbor extrapolation first, so
+    # interpolation always blends real numbers — then let the fine land
+    # mask (applied below) be the ONLY authority on what's hidden.
+    sst_filled  = fill_nan_nearest(sst_180.values)
+    anom_filled = fill_nan_nearest(anom_180.values)
+
     # Resample to a clean 720x360 grid using pure numpy bilinear interpolation.
     # xarray.interp(method="linear") requires scipy under the hood — we avoid
     # that dependency entirely by doing the 2-D resample with numpy directly.
     lon_new = np.linspace(-179.75, 179.75, 720)
     lat_new = np.linspace(  89.75,  -89.75, 360)   # north -> south for image
 
-    sst_grid  = numpy_bilinear(sst_180.values,
+    sst_grid  = numpy_bilinear(sst_filled,
                                sst_180.lat.values, sst_180.lon.values,
                                lat_new, lon_new)
-    anom_grid = numpy_bilinear(anom_180.values,
+    anom_grid = numpy_bilinear(anom_filled,
                                anom_180.lat.values, anom_180.lon.values,
                                lat_new, lon_new)
 
-    # Apply a precise land mask on the resampled grid. ERSSTv5 is a 2x2 degree
-    # product, so its native coastline is very coarse — bilinear-resampling it
-    # to 720x360 does not add real coastal detail, and color visibly bleeds
-    # onto land when draped on a high-resolution basemap. We mask using a
-    # proper 1km-resolution land/sea boundary so only true ocean pixels render.
+    # Apply the precise 1km-resolution land mask — the ONLY source of truth
+    # for what's hidden. ERSSTv5 is too coarse (2 degrees) to define its own
+    # accurate coastline, so we don't rely on its native NaN pattern at all.
     lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_new)
     is_ocean = globe.is_ocean(lat_grid_mesh, lon_grid_mesh)   # (360, 720) bool
 
