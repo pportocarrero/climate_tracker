@@ -18,5 +18,10 @@
     "date": "1997-08",
     "condition": "neutral",
     "nino34": 0.11
+  },
+  {
+    "date": "1997-09",
+    "condition": "neutral",
+    "nino34": 0.19
   }
 ]
