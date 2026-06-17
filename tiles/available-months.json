@@ -78,5 +78,10 @@
     "date": "1999-06",
     "condition": "neutral",
     "nino34": 0.11
+  },
+  {
+    "date": "2000-01",
+    "condition": "neutral",
+    "nino34": -0.02
   }
 ]
