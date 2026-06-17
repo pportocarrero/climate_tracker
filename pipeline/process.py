@@ -148,7 +148,11 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
         for tx in range(n):
             for ty in range(n):
                 box  = (tx * tile_w, ty * tile_h, (tx + 1) * tile_w, (ty + 1) * tile_h)
-                tile = full_img.crop(box).resize((TILE_SIZE, TILE_SIZE), Image.LANCZOS)
+                # NEAREST (not LANCZOS) preserves hard transparency edges at
+                # coastlines. LANCZOS blends neighboring pixels — including
+                # transparent land pixels — into semi-transparent gradients,
+                # which is exactly the "color bleeding onto land" artifact.
+                tile = full_img.crop(box).resize((TILE_SIZE, TILE_SIZE), Image.NEAREST)
                 path = out_dir / str(z) / str(tx) / f"{ty}.png"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 tile.save(path, "PNG", optimize=True)

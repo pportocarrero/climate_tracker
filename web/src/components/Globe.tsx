@@ -6,6 +6,7 @@ import {
   Ion, UrlTemplateImageryProvider,
   Color, Cartesian3, PolygonHierarchy,
   VerticalOrigin, HeightReference, LabelStyle,
+  TextureMinificationFilter, TextureMagnificationFilter,
 } from 'cesium'
 import type { Viewer as CesiumViewer } from 'cesium'
 import type { DataManifest, LayerState } from '../types'
@@ -80,8 +81,13 @@ export function Globe({ manifest, layerState }: GlobeProps) {
       />
 
       {/* ── SST / Anomaly overlay ── */}
+      {/* key forces React to fully unmount + remount the layer when the URL
+          changes, rather than attempting an in-place prop update — Cesium's
+          ImageryLayer treats imageryProvider as effectively immutable after
+          creation, so in-place updates leave stale tiles/cache behind. */}
       {sstUrl && (
         <ImageryLayer
+          key={sstUrl}
           imageryProvider={new UrlTemplateImageryProvider({
             url: sstUrl,
             credit: 'NOAA ERSSTv5',
@@ -89,6 +95,8 @@ export function Globe({ manifest, layerState }: GlobeProps) {
             maximumLevel: 4,
           })}
           alpha={0.75}
+          minificationFilter={TextureMinificationFilter.NEAREST}
+          magnificationFilter={TextureMagnificationFilter.NEAREST}
         />
       )}
 
