@@ -45,14 +45,16 @@ jobs:
           cd pipeline
           python process.py
 
-      - name: Determine month label
+      - name: Determine month label from manifest
         id: label
         run: |
-          if [ -n "${{ github.event.inputs.year_month }}" ]; then
-            echo "month=${{ github.event.inputs.year_month }}" >> $GITHUB_OUTPUT
-          else
-            echo "month=$(date -u +%Y-%m)" >> $GITHUB_OUTPUT
-          fi
+          # Read the actual processed month from latest.json instead of
+          # recalculating it — process.py defaults to PREVIOUS month (since
+          # the current month's data isn't finalized yet), so recomputing
+          # "today's month" here caused a mismatch with the real tile folder.
+          MONTH=$(python3 -c "import json; print(json.load(open('pipeline/output/latest.json'))['date'])")
+          echo "month=${MONTH}" >> $GITHUB_OUTPUT
+          echo "Processed month: ${MONTH}"
 
       - name: Save latest.json to temp before branch switch
         run: |
@@ -76,8 +78,12 @@ jobs:
       - name: Copy tiles into branch
         run: |
           MONTH="${{ steps.label.outputs.month }}"
+          # Wipe any stale data for this month first — a previous buggy run
+          # left nested duplicate folders (e.g. anomaly/anomaly/) sitting
+          # here; without this rm, those accumulate across every run.
+          rm -rf "tiles/${MONTH}"
           mkdir -p "tiles/${MONTH}/sst" "tiles/${MONTH}/anomaly"
-          # NOTE: trailing /. on the source copies CONTENTS into the target,
+          # Trailing /. on the source copies CONTENTS into the target,
           # not the directory itself. Without it, cp -r src/ dst/ creates
           # dst/src/ (a nested duplicate folder) — that was the original bug.
           cp -r pipeline/output/sst/.     "tiles/${MONTH}/sst/"
