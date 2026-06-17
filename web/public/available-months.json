@@ -178,5 +178,10 @@
     "date": "2023-01",
     "condition": "neutral",
     "nino34": -0.17
+  },
+  {
+    "date": "2026-05",
+    "condition": "neutral",
+    "nino34": 0.19
   }
 ]
