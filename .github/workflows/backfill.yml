@@ -112,14 +112,45 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add tiles/
           git diff --staged --quiet && echo "NOTHING TO COMMIT" || git commit -m "tiles: backfill ${{ matrix.month }}"
-          git push origin tiles
+
+          # Matrix jobs run sequentially (max-parallel: 1) but each starts
+          # from a checkout taken BEFORE the previous job's push — so the
+          # remote has moved on by the time we try to push. Retry with
+          # pull --rebase to pick up intervening commits before pushing.
+          for attempt in 1 2 3 4 5; do
+            if git push origin tiles; then
+              echo "Push succeeded on attempt ${attempt}"
+              break
+            fi
+            echo "Push rejected (attempt ${attempt}/5) — pulling and retrying..."
+            git pull --rebase origin tiles
+            if [ "$attempt" = "5" ]; then
+              echo "Push failed after 5 attempts"
+              exit 1
+            fi
+          done
 
       - name: Update available-months.json on main
         run: |
           git checkout -f main
-          cp /tmp/available-months.json web/public/available-months.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add web/public/available-months.json
-          git diff --staged --quiet || git commit -m "chore: update available months [backfill ${{ matrix.month }}]"
-          git push origin main
+
+          for attempt in 1 2 3 4 5; do
+            # Pull first this time, since main may have moved since our
+            # initial checkout at job start (same race as the tiles push).
+            git pull --rebase origin main || true
+            cp /tmp/available-months.json web/public/available-months.json
+            git add web/public/available-months.json
+            git diff --staged --quiet && { echo "Nothing to commit"; break; }
+            git commit -m "chore: update available months [backfill ${{ matrix.month }}]"
+            if git push origin main; then
+              echo "Push succeeded on attempt ${attempt}"
+              break
+            fi
+            echo "Push rejected (attempt ${attempt}/5) — retrying..."
+            if [ "$attempt" = "5" ]; then
+              echo "Push failed after 5 attempts"
+              exit 1
+            fi
+          done
