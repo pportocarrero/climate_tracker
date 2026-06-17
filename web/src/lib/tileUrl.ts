@@ -68,3 +68,31 @@ export async function fetchAvailableMonths(): Promise<AvailableMonth[]> {
   if (!res.ok) throw new Error(`Failed to fetch available-months.json: ${res.status}`)
   return res.json() as Promise<AvailableMonth[]>
 }
+
+/**
+ * Preloads the low-zoom tiles (Z0-Z2 — the ones visible at typical
+ * zoomed-out viewing distance) for a given date + layer, so that when
+ * animation playback reaches this month, the tiles are already in the
+ * browser's HTTP cache and render instantly instead of stuttering on
+ * a fresh network request.
+ *
+ * Z0-Z2 covers 1 + 4 + 16 = 21 tiles per layer — small enough to prefetch
+ * a few months ahead without meaningfully impacting bandwidth.
+ */
+export function prefetchTiles(date: string, layer: ActiveLayer): void {
+  if (!GITHUB_REPO) return
+  const base = `https://raw.githubusercontent.com/${GITHUB_REPO}/tiles/tiles/${date}/${layer}`
+
+  for (let z = 0; z <= 2; z++) {
+    const n = 2 ** z
+    for (let x = 0; x < n; x++) {
+      for (let y = 0; y < n; y++) {
+        const img = new Image()
+        img.src = `${base}/${z}/${x}/${y}.png`
+        // Intentionally not awaited — fire-and-forget into the browser
+        // cache. We don't care about the result, just that the request
+        // happens early.
+      }
+    }
+  }
+}
