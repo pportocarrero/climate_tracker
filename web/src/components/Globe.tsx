@@ -99,11 +99,20 @@ export function Globe({ manifest, layerState }: GlobeProps) {
             // default tiling scheme Cesium assumes for UrlTemplateImageryProvider
             // IS Web Mercator, which stretches latitude non-linearly. Without
             // this override, every tile is vertically misplaced by an amount
-            // that grows with distance from the equator — exactly the
-            // "data appears south of where it should be, worse away from the
-            // equator" symptom. GeographicTilingScheme tells Cesium our tiles
-            // are linear lat/lon, matching what process.py actually produced.
-            tilingScheme: new GeographicTilingScheme(),
+            // that grows with distance from the equator.
+            //
+            // SECOND CRITICAL ISSUE: Cesium's GeographicTilingScheme defaults
+            // to numberOfLevelZeroTilesX: 2 (splitting the world into east/
+            // west halves at zoom 0), but our pipeline's generate_tiles()
+            // produces exactly ONE tile at zoom 0 (n = 2**0 = 1) covering the
+            // full -180..+180 width. Without forcing this to 1, every tile
+            // index at every zoom level refers to a different region than
+            // what we generated — continents end up scrambled by roughly a
+            // third of the globe's width, which is exactly what was observed.
+            tilingScheme: new GeographicTilingScheme({
+              numberOfLevelZeroTilesX: 1,
+              numberOfLevelZeroTilesY: 1,
+            }),
           })}
           alpha={0.75}
           minificationFilter={TextureMinificationFilter.NEAREST}
