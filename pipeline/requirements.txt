@@ -11,3 +11,7 @@ netCDF4>=1.7.2
 Pillow>=10.4.0
 matplotlib>=3.9.2
 requests>=2.32.3
+
+# Land/sea masking — precomputed 1km-resolution mask bundled in the package.
+# Pure Python + numpy, no GDAL or native compilation needed.
+global-land-mask>=1.0.0

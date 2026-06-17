@@ -32,6 +32,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.colors import LinearSegmentedColormap
 from PIL import Image
+from global_land_mask import globe   # precise 1km-resolution land/sea mask
 
 warnings.filterwarnings("ignore")
 
@@ -303,6 +304,17 @@ def main() -> None:
     anom_grid = numpy_bilinear(anom_180.values,
                                anom_180.lat.values, anom_180.lon.values,
                                lat_new, lon_new)
+
+    # Apply a precise land mask on the resampled grid. ERSSTv5 is a 2x2 degree
+    # product, so its native coastline is very coarse — bilinear-resampling it
+    # to 720x360 does not add real coastal detail, and color visibly bleeds
+    # onto land when draped on a high-resolution basemap. We mask using a
+    # proper 1km-resolution land/sea boundary so only true ocean pixels render.
+    lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_new)
+    is_ocean = globe.is_ocean(lat_grid_mesh, lon_grid_mesh)   # (360, 720) bool
+
+    sst_grid  = np.where(is_ocean, sst_grid,  np.nan)
+    anom_grid = np.where(is_ocean, anom_grid, np.nan)
 
     # 4. Nino indices
     indices   = compute_nino_indices(anom_180)
