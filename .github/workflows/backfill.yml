@@ -1,0 +1,143 @@
+name: Backfill historical months
+
+# Manual-only — this is a one-time (or occasional) bulk job, not a schedule.
+# Runs the SAME steps as the daily pipeline, once per month in MONTHS below,
+# reusing all the tested commit/push/index logic rather than duplicating it.
+on:
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'Comma-separated YYYY-MM list to backfill (leave blank for default curated set)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  determine-months:
+    runs-on: ubuntu-latest
+    outputs:
+      months: ${{ steps.set.outputs.months }}
+    steps:
+      - name: Build month list
+        id: set
+        run: |
+          if [ -n "${{ github.event.inputs.months }}" ]; then
+            # User-supplied comma-separated list -> JSON array
+            MONTHS=$(python3 -c "
+          import json
+          raw = '${{ github.event.inputs.months }}'
+          months = [m.strip() for m in raw.split(',') if m.strip()]
+          print(json.dumps(months))
+          ")
+          else
+            # Default curated set: key historical El Nino / La Nina periods
+            MONTHS='["1997-05","1997-06","1997-07","1997-08","1997-09","1997-10","1997-11","1997-12","1998-01","1998-02","1998-03","1998-04","1998-09","1998-10","1999-01","1999-06","2000-01","2000-06","2015-05","2015-06","2015-07","2015-08","2015-09","2015-10","2015-11","2015-12","2016-01","2016-02","2016-03","2016-04","2020-09","2021-01","2021-09","2022-01","2022-09","2023-01"]'
+          fi
+          echo "months=${MONTHS}" >> $GITHUB_OUTPUT
+          echo "Will backfill: ${MONTHS}"
+
+  backfill:
+    needs: determine-months
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      max-parallel: 1   # sequential — each run commits to the same tiles
+                         # branch, parallel runs would race and overwrite
+      matrix:
+        month: ${{ fromJson(needs.determine-months.outputs.months) }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          lfs:         true
+          token:       ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd pipeline
+          pip install -r requirements.txt
+
+      - name: Run processing pipeline for ${{ matrix.month }}
+        env:
+          YEAR_MONTH: ${{ matrix.month }}
+        run: |
+          cd pipeline
+          python process.py
+
+      - name: Save manifest to temp before branch switch
+        run: |
+          cp pipeline/output/latest.json /tmp/latest.json
+
+      - name: Checkout tiles branch
+        run: |
+          git fetch origin tiles 2>&1 || echo "FETCH FAILED (expected on first run)"
+          if git show-ref --verify --quiet refs/remotes/origin/tiles; then
+            git checkout tiles
+          else
+            git checkout --orphan tiles
+            git rm -rf . 2>&1 || echo "rm had nothing to remove (expected)"
+          fi
+
+      - name: Copy tiles into branch
+        run: |
+          MONTH="${{ matrix.month }}"
+          rm -rf "tiles/${MONTH}"
+          mkdir -p "tiles/${MONTH}/sst" "tiles/${MONTH}/anomaly"
+          cp -r pipeline/output/sst/.     "tiles/${MONTH}/sst/"
+          cp -r pipeline/output/anomaly/. "tiles/${MONTH}/anomaly/"
+          cp /tmp/latest.json "tiles/${MONTH}/manifest.json"
+          echo "Verifying structure:"
+          find "tiles/${MONTH}" -maxdepth 3 -type d
+
+      - name: Regenerate available-months index
+        run: |
+          cat > /tmp/build_index.py << 'PYEOF'
+import json, os
+
+months = []
+for entry in sorted(os.listdir("tiles")):
+    manifest_path = os.path.join("tiles", entry, "manifest.json")
+    if os.path.isdir(os.path.join("tiles", entry)) and os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            m = json.load(f)
+        months.append({
+            "date":      m["date"],
+            "condition": m["condition"],
+            "nino34":    m["indices"]["nino34"],
+        })
+months.sort(key=lambda x: x["date"])
+with open("tiles/available-months.json", "w") as f:
+    json.dump(months, f, indent=2)
+print(f"Indexed {len(months)} available months")
+PYEOF
+          python3 /tmp/build_index.py
+          cp tiles/available-months.json /tmp/available-months.json
+
+      - name: Commit and push tiles branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tiles/
+          git diff --staged --quiet && echo "NOTHING TO COMMIT" || git commit -m "tiles: backfill ${{ matrix.month }}"
+          git push origin tiles
+
+      - name: Update available-months.json on main
+        run: |
+          git checkout -f main
+          cp /tmp/available-months.json web/public/available-months.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/public/available-months.json
+          git diff --staged --quiet || git commit -m "chore: update available months [backfill ${{ matrix.month }}]"
+          git push origin main

@@ -28,9 +28,43 @@ export function getTileUrl(manifest: DataManifest, layer: ActiveLayer): string {
 
 /**
  * Fetches the latest.json manifest committed to main by the pipeline.
+ * Represents "current conditions" — the most recently processed month.
  */
 export async function fetchManifest(): Promise<DataManifest> {
   const res = await fetch('/latest.json', { cache: 'no-cache' })
   if (!res.ok) throw new Error(`Failed to fetch latest.json: ${res.status}`)
   return res.json() as Promise<DataManifest>
+}
+
+/**
+ * Fetches the manifest for a SPECIFIC historical month, directly from the
+ * tiles branch (since that's where each month's self-describing
+ * manifest.json lives, alongside its own tiles).
+ */
+export async function fetchManifestForDate(date: string): Promise<DataManifest> {
+  if (!GITHUB_REPO) {
+    throw new Error('VITE_GITHUB_REPO not set')
+  }
+  const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/tiles/tiles/${date}/manifest.json`
+  const res = await fetch(url, { cache: 'no-cache' })
+  if (!res.ok) throw new Error(`Failed to fetch manifest for ${date}: ${res.status}`)
+  return res.json() as Promise<DataManifest>
+}
+
+/**
+ * Fetches the lightweight index of every month that has data available,
+ * used to populate the date picker dropdown. Each entry has just enough
+ * info (date, condition, nino34) to render the dropdown without needing
+ * to fetch every month's full manifest up front.
+ */
+export interface AvailableMonth {
+  date:      string
+  condition: string
+  nino34:    number
+}
+
+export async function fetchAvailableMonths(): Promise<AvailableMonth[]> {
+  const res = await fetch('/available-months.json', { cache: 'no-cache' })
+  if (!res.ok) throw new Error(`Failed to fetch available-months.json: ${res.status}`)
+  return res.json() as Promise<AvailableMonth[]>
 }

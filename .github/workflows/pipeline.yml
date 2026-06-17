@@ -56,7 +56,7 @@ jobs:
           echo "month=${MONTH}" >> $GITHUB_OUTPUT
           echo "Processed month: ${MONTH}"
 
-      - name: Save latest.json to temp before branch switch
+      - name: Save manifests to temp before branch switch
         run: |
           cp pipeline/output/latest.json /tmp/latest.json
 
@@ -88,9 +88,44 @@ jobs:
           # dst/src/ (a nested duplicate folder) — that was the original bug.
           cp -r pipeline/output/sst/.     "tiles/${MONTH}/sst/"
           cp -r pipeline/output/anomaly/. "tiles/${MONTH}/anomaly/"
+          # Per-month manifest — makes each month self-describing, so the
+          # date picker can fetch a historical month's indices/condition
+          # without needing a giant master index.
+          cp /tmp/latest.json "tiles/${MONTH}/manifest.json"
+          # latest.json at branch root still tracks the most recent run,
+          # used by the "Current conditions" view.
           cp /tmp/latest.json "tiles/latest.json"
           echo "Verifying structure:"
           find "tiles/${MONTH}" -maxdepth 3 -type d
+
+      - name: Regenerate available-months index
+        run: |
+          # Scan the tiles branch for every month folder that has a
+          # manifest.json, and build a lightweight index the date picker
+          # dropdown reads. Sorted ascending (oldest first).
+          # Written to a standalone script file (not an inline heredoc) to
+          # avoid YAML/bash indentation fragility with heredoc terminators.
+          cat > /tmp/build_index.py << 'PYEOF'
+import json, os
+
+months = []
+for entry in sorted(os.listdir("tiles")):
+    manifest_path = os.path.join("tiles", entry, "manifest.json")
+    if os.path.isdir(os.path.join("tiles", entry)) and os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            m = json.load(f)
+        months.append({
+            "date":      m["date"],
+            "condition": m["condition"],
+            "nino34":    m["indices"]["nino34"],
+        })
+months.sort(key=lambda x: x["date"])
+with open("tiles/available-months.json", "w") as f:
+    json.dump(months, f, indent=2)
+print(f"Indexed {len(months)} available months")
+PYEOF
+          python3 /tmp/build_index.py
+          cp tiles/available-months.json /tmp/available-months.json
 
       - name: Commit and push tiles branch
         run: |
@@ -103,13 +138,14 @@ jobs:
           git push origin tiles 2>&1
           echo "Push exit code: $?"
 
-      - name: Switch back to main and update latest.json
+      - name: Switch back to main and update manifests
         run: |
           # Force checkout — discard any untracked files left from tiles branch
           git checkout -f main
           cp /tmp/latest.json web/public/latest.json
+          cp /tmp/available-months.json web/public/available-months.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add web/public/latest.json
-          git diff --staged --quiet || git commit -m "chore: update latest.json [${{ steps.label.outputs.month }}]"
+          git add web/public/latest.json web/public/available-months.json
+          git diff --staged --quiet || git commit -m "chore: update manifests [${{ steps.label.outputs.month }}]"
           git push origin main
