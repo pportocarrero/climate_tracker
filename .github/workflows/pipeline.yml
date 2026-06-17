@@ -56,9 +56,10 @@ jobs:
           echo "month=${MONTH}" >> $GITHUB_OUTPUT
           echo "Processed month: ${MONTH}"
 
-      - name: Save manifests to temp before branch switch
+      - name: Save manifests and scripts to temp before branch switch
         run: |
           cp pipeline/output/latest.json /tmp/latest.json
+          cp pipeline/build_index.py /tmp/build_index.py
 
       - name: Checkout tiles branch (orphan if first run)
         run: |
@@ -100,30 +101,6 @@ jobs:
 
       - name: Regenerate available-months index
         run: |
-          # Scan the tiles branch for every month folder that has a
-          # manifest.json, and build a lightweight index the date picker
-          # dropdown reads. Sorted ascending (oldest first).
-          # Written to a standalone script file (not an inline heredoc) to
-          # avoid YAML/bash indentation fragility with heredoc terminators.
-          cat > /tmp/build_index.py << 'PYEOF'
-import json, os
-
-months = []
-for entry in sorted(os.listdir("tiles")):
-    manifest_path = os.path.join("tiles", entry, "manifest.json")
-    if os.path.isdir(os.path.join("tiles", entry)) and os.path.exists(manifest_path):
-        with open(manifest_path) as f:
-            m = json.load(f)
-        months.append({
-            "date":      m["date"],
-            "condition": m["condition"],
-            "nino34":    m["indices"]["nino34"],
-        })
-months.sort(key=lambda x: x["date"])
-with open("tiles/available-months.json", "w") as f:
-    json.dump(months, f, indent=2)
-print(f"Indexed {len(months)} available months")
-PYEOF
           python3 /tmp/build_index.py
           cp tiles/available-months.json /tmp/available-months.json
 
