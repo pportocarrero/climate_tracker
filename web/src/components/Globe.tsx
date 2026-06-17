@@ -115,8 +115,15 @@ export function Globe({ manifest, layerState }: GlobeProps) {
             }),
           })}
           alpha={0.75}
+          // LINEAR magnification lets the GPU smooth the feathered alpha
+          // edge (from feather_alpha_edge() in the pipeline) when zoomed
+          // in — NEAREST would re-pixelate that softened edge back into
+          // hard blocky steps, undoing the smoothing entirely. We keep
+          // minificationFilter as NEAREST (zoomed OUT / far view) since
+          // that's unrelated to the coastline-smoothness concern and
+          // changing it isn't needed here.
           minificationFilter={TextureMinificationFilter.NEAREST}
-          magnificationFilter={TextureMagnificationFilter.NEAREST}
+          magnificationFilter={TextureMagnificationFilter.LINEAR}
         />
       )}
 

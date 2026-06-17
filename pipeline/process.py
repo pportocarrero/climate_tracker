@@ -160,6 +160,26 @@ def array_to_image(
     return Image.fromarray(rgba8, mode="RGBA")
 
 
+def feather_alpha_edge(img: Image.Image, blur_radius: float = 2.0) -> Image.Image:
+    """
+    Softens the hard pixelated alpha (transparency) edge at coastlines,
+    WITHOUT touching the RGB color values at all. This gives smoother-
+    looking coastlines without reintroducing the "color bleeding onto land"
+    bug that NEAREST-neighbor resizing was specifically chosen to avoid.
+
+    How: split into RGB + alpha, blur ONLY the alpha channel slightly (a
+    Gaussian blur softens the hard 0/255 step into a smooth gradient over
+    a pixel or two), then recombine with the ORIGINAL unblurred RGB. Since
+    color was never touched, a land pixel can never pick up an ocean color
+    — it can only become partially transparent at the boundary, fading
+    the existing color smoothly instead of cutting it off abruptly.
+    """
+    from PIL import ImageFilter
+    r, g, b, a = img.split()
+    a_blurred  = a.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    return Image.merge("RGBA", (r, g, b, a_blurred))
+
+
 # ── XYZ tile pyramid ─────────────────────────────────────────────────────────
 # NOTE: generate_tiles() below does pure linear pixel slicing of an
 # EQUIRECTANGULAR (plain lat/lon) image — NOT Web Mercator. The frontend
@@ -174,6 +194,11 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
     (equirectangular) division — no Mercator projection involved.
     full_img must represent the entire world: lon -180->+180, lat +90->-90.
     """
+    # Feather the alpha edge ONCE on the full image, before slicing into
+    # tiles — blurring per-tile would create visible seams at tile borders
+    # where the blur kernel gets cut off differently on each side.
+    full_img = feather_alpha_edge(full_img)
+
     W, H = full_img.size
     for z in range(0, max_zoom + 1):
         n        = 2 ** z
@@ -183,10 +208,10 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
         for tx in range(n):
             for ty in range(n):
                 box  = (tx * tile_w, ty * tile_h, (tx + 1) * tile_w, (ty + 1) * tile_h)
-                # NEAREST (not LANCZOS) preserves hard transparency edges at
-                # coastlines. LANCZOS blends neighboring pixels — including
-                # transparent land pixels — into semi-transparent gradients,
-                # which is exactly the "color bleeding onto land" artifact.
+                # NEAREST (not LANCZOS) preserves crisp COLOR at coastlines —
+                # the alpha edge is separately softened above, so we get
+                # smooth-looking transparency without ever blending real
+                # ocean color into land pixels.
                 tile = full_img.crop(box).resize((TILE_SIZE, TILE_SIZE), Image.NEAREST)
                 path = out_dir / str(z) / str(tx) / f"{ty}.png"
                 path.parent.mkdir(parents=True, exist_ok=True)
