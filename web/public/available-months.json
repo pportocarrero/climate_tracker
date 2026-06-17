@@ -73,5 +73,10 @@
     "date": "1999-01",
     "condition": "weak-la-nina",
     "nino34": -0.54
+  },
+  {
+    "date": "1999-06",
+    "condition": "neutral",
+    "nino34": 0.11
   }
 ]
