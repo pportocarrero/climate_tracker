@@ -80,16 +80,41 @@ def make_sst_cmap() -> LinearSegmentedColormap:
     return LinearSegmentedColormap.from_list("sst", colors)
 
 def make_anomaly_cmap() -> LinearSegmentedColormap:
+    """
+    High-contrast diverging palette for SST anomalies. Saturates much faster
+    than a naive linear ramp — real ENSO anomalies rarely exceed +/-2.5C, so
+    we want strong, vivid color well before that, not pastel washes.
+    """
     colors = [
-        (0.04, 0.18, 0.72),  # strong cold  (-3°C)
-        (0.25, 0.52, 0.93),  # moderate cold
-        (0.72, 0.86, 1.00),  # slight cold
-        (1.00, 1.00, 1.00),  # neutral (0°C)
-        (1.00, 0.72, 0.58),  # slight warm
-        (0.93, 0.32, 0.12),  # moderate warm
-        (0.60, 0.00, 0.04),  # strong warm  (+3°C)
+        (0.02, 0.05, 0.45),  # deep navy      — extreme cold
+        (0.00, 0.30, 0.85),  # vivid blue     — strong cold
+        (0.25, 0.65, 1.00),  # bright cyan-blue — moderate cold
+        (0.80, 0.92, 1.00),  # pale blue      — weak cold
+        (1.00, 1.00, 1.00),  # white          — neutral (0C)
+        (1.00, 0.88, 0.55),  # pale gold      — weak warm
+        (1.00, 0.55, 0.10),  # vivid orange   — moderate warm
+        (0.90, 0.10, 0.05),  # vivid red      — strong warm
+        (0.55, 0.00, 0.10),  # deep maroon    — extreme warm
     ]
     return LinearSegmentedColormap.from_list("anomaly", colors)
+
+def normalize_anomaly(data: np.ndarray, sat_point: float = 1.8) -> np.ndarray:
+    """
+    Non-linear normalization that gives more visual contrast to the
+    meaningful +/-2C range, where almost all real ENSO signal lives, rather
+    than stretching color evenly out to extreme/rare +/-3C+ values.
+
+    Uses a signed power curve: preserves sign, compresses small values less
+    than large ones would be under a pure linear map, reaching full
+    saturation (0 or 1) at sat_point degrees instead of way out at 3C.
+    Returns values already clipped to [0, 1] for direct colormap use.
+    """
+    sign    = np.sign(data)
+    scaled  = np.clip(np.abs(data) / sat_point, 0, 1)
+    # Power < 1 pulls mid-range values UP toward the extremes faster —
+    # i.e. a 0.6C anomaly reads much more vividly than under a linear map.
+    boosted = scaled ** 0.65
+    return 0.5 + sign * boosted * 0.5   # remap to 0..1 with 0.5 = neutral
 
 SST_CMAP     = make_sst_cmap()
 ANOMALY_CMAP = make_anomaly_cmap()
@@ -114,9 +139,20 @@ def download_ersst(year: int, month: int) -> Path:
 
 
 # ── Array -> RGBA PIL image ───────────────────────────────────────────────────
-def array_to_image(data: np.ndarray, cmap, vmin: float, vmax: float) -> Image.Image:
-    """Convert 2D float array to RGBA PIL image. NaN -> transparent."""
-    normed = np.clip((data - vmin) / (vmax - vmin), 0.0, 1.0)
+def array_to_image(
+    data: np.ndarray, cmap, vmin: float, vmax: float,
+    normalize_fn=None
+) -> Image.Image:
+    """
+    Convert 2D float array to RGBA PIL image. NaN -> transparent.
+    If normalize_fn is given, it's used instead of the default linear
+    (data-vmin)/(vmax-vmin) mapping — e.g. normalize_anomaly() for a
+    higher-contrast, non-linear anomaly visualization.
+    """
+    if normalize_fn is not None:
+        normed = normalize_fn(data)
+    else:
+        normed = np.clip((data - vmin) / (vmax - vmin), 0.0, 1.0)
     rgba   = cmap(normed)                         # (H, W, 4) float32
     rgba8  = (rgba * 255).astype(np.uint8)
     rgba8[np.isnan(data), 3] = 0                  # land/missing -> transparent
@@ -415,7 +451,8 @@ def main() -> None:
     print("\n[3/4] Generating tiles...")
 
     sst_img  = array_to_image(sst_grid,  SST_CMAP,     vmin=-2,  vmax=32)
-    anom_img = array_to_image(anom_grid, ANOMALY_CMAP, vmin=-3,  vmax=3)
+    anom_img = array_to_image(anom_grid, ANOMALY_CMAP, vmin=-3,  vmax=3,
+                               normalize_fn=normalize_anomaly)
 
     print("  SST tiles:")
     generate_tiles(sst_img,  OUTPUT_DIR / "sst")
