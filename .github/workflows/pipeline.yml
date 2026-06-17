@@ -22,8 +22,9 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          lfs: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          lfs:           true
+          token:         ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth:   0   # full history — shallow clones break branch operations
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -59,29 +60,42 @@ jobs:
 
       - name: Checkout tiles branch (orphan if first run)
         run: |
-          git fetch origin tiles 2>/dev/null || true
+          set -x   # print every command — needed to diagnose branch issues
+          git fetch origin tiles 2>&1 || echo "FETCH FAILED (expected on first run)"
           if git show-ref --verify --quiet refs/remotes/origin/tiles; then
+            echo "tiles branch exists remotely — checking it out"
             git checkout tiles
           else
+            echo "tiles branch does NOT exist — creating orphan branch"
             git checkout --orphan tiles
-            git rm -rf . --quiet || true
+            git rm -rf . 2>&1 || echo "rm had nothing to remove (expected)"
           fi
+          echo "Current branch: $(git branch --show-current)"
+          ls -la
 
       - name: Copy tiles into branch
         run: |
           MONTH="${{ steps.label.outputs.month }}"
           mkdir -p "tiles/${MONTH}/sst" "tiles/${MONTH}/anomaly"
-          cp -r pipeline/output/sst/     "tiles/${MONTH}/sst/"
-          cp -r pipeline/output/anomaly/ "tiles/${MONTH}/anomaly/"
+          # NOTE: trailing /. on the source copies CONTENTS into the target,
+          # not the directory itself. Without it, cp -r src/ dst/ creates
+          # dst/src/ (a nested duplicate folder) — that was the original bug.
+          cp -r pipeline/output/sst/.     "tiles/${MONTH}/sst/"
+          cp -r pipeline/output/anomaly/. "tiles/${MONTH}/anomaly/"
           cp /tmp/latest.json "tiles/latest.json"
+          echo "Verifying structure:"
+          find "tiles/${MONTH}" -maxdepth 3 -type d
 
       - name: Commit and push tiles branch
         run: |
+          set -x
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add tiles/
-          git diff --staged --quiet || git commit -m "tiles: ${{ steps.label.outputs.month }}"
-          git push origin tiles
+          git status
+          git diff --staged --quiet && echo "NOTHING TO COMMIT" || git commit -m "tiles: ${{ steps.label.outputs.month }}"
+          git push origin tiles 2>&1
+          echo "Push exit code: $?"
 
       - name: Switch back to main and update latest.json
         run: |
