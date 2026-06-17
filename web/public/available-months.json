@@ -103,5 +103,10 @@
     "date": "2015-07",
     "condition": "weak-el-nino",
     "nino34": 0.56
+  },
+  {
+    "date": "2015-08",
+    "condition": "weak-el-nino",
+    "nino34": 0.88
   }
 ]
