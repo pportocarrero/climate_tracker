@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import cesium from 'vite-plugin-cesium'
 
 export default defineConfig({
   plugins: [
     react(),
+    cesium(),    // Handles Cesium's static assets (workers, textures) automatically
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
@@ -19,10 +21,10 @@ export default defineConfig({
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
         ],
       },
+      workbox: {
+        // Don't try to precache Cesium's large static assets
+        globIgnores: ['**/cesium/**'],
+      },
     }),
   ],
-  define: {
-    // Required for Deck.gl
-    'process.env': {},
-  },
 })
