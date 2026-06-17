@@ -28,5 +28,10 @@
     "date": "1997-10",
     "condition": "neutral",
     "nino34": 0.42
+  },
+  {
+    "date": "1997-11",
+    "condition": "weak-el-nino",
+    "nino34": 0.58
   }
 ]
