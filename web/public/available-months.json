@@ -148,5 +148,10 @@
     "date": "2016-04",
     "condition": "weak-el-nino",
     "nino34": 0.82
+  },
+  {
+    "date": "2020-09",
+    "condition": "neutral",
+    "nino34": -0.26
   }
 ]
