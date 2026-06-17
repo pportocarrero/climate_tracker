@@ -98,5 +98,10 @@
     "date": "2015-06",
     "condition": "neutral",
     "nino34": 0.19
+  },
+  {
+    "date": "2015-07",
+    "condition": "weak-el-nino",
+    "nino34": 0.56
   }
 ]
