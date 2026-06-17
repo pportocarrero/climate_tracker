@@ -7,6 +7,7 @@ import {
   Color, Cartesian3, PolygonHierarchy,
   VerticalOrigin, HeightReference, LabelStyle,
   TextureMinificationFilter, TextureMagnificationFilter,
+  GeographicTilingScheme,
 } from 'cesium'
 import type { Viewer as CesiumViewer } from 'cesium'
 import type { DataManifest, LayerState } from '../types'
@@ -93,6 +94,16 @@ export function Globe({ manifest, layerState }: GlobeProps) {
             credit: 'NOAA ERSSTv5',
             minimumLevel: 0,
             maximumLevel: 4,
+            // CRITICAL: our pipeline generates tiles by linearly slicing a
+            // plain equirectangular (lat/lon) grid — NOT Web Mercator. The
+            // default tiling scheme Cesium assumes for UrlTemplateImageryProvider
+            // IS Web Mercator, which stretches latitude non-linearly. Without
+            // this override, every tile is vertically misplaced by an amount
+            // that grows with distance from the equator — exactly the
+            // "data appears south of where it should be, worse away from the
+            // equator" symptom. GeographicTilingScheme tells Cesium our tiles
+            // are linear lat/lon, matching what process.py actually produced.
+            tilingScheme: new GeographicTilingScheme(),
           })}
           alpha={0.75}
           minificationFilter={TextureMinificationFilter.NEAREST}

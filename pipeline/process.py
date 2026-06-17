@@ -125,19 +125,18 @@ def array_to_image(data: np.ndarray, cmap, vmin: float, vmax: float) -> Image.Im
 
 
 # ── XYZ tile pyramid ─────────────────────────────────────────────────────────
-def _lon_to_x(lon: float, z: int) -> int:
-    return int((lon + 180.0) / 360.0 * (2 ** z))
-
-def _lat_to_y(lat: float, z: int) -> int:
-    lat_r = math.radians(max(-85.05, min(85.05, lat)))
-    return int((1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r)) / math.pi)
-               / 2.0 * (2 ** z))
+# NOTE: generate_tiles() below does pure linear pixel slicing of an
+# EQUIRECTANGULAR (plain lat/lon) image — NOT Web Mercator. The frontend
+# (Globe.tsx) must use Cesium's GeographicTilingScheme to match. Do not add
+# Mercator projection math here unless the frontend tiling scheme is changed
+# to match — mixing the two is what caused tiles to be vertically misplaced,
+# increasingly so away from the equator.
 
 def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOOM) -> None:
     """
-    Slice a full-world RGBA image into XYZ PNG tiles.
-    full_img must represent the entire world: lon -180->+180, lat ~+85->-85
-    (Web Mercator world bounds).
+    Slice a full-world RGBA image into XYZ PNG tiles using plain linear
+    (equirectangular) division — no Mercator projection involved.
+    full_img must represent the entire world: lon -180->+180, lat +90->-90.
     """
     W, H = full_img.size
     for z in range(0, max_zoom + 1):
