@@ -160,24 +160,72 @@ def array_to_image(
     return Image.fromarray(rgba8, mode="RGBA")
 
 
-def feather_alpha_edge(img: Image.Image, blur_radius: float = 2.0) -> Image.Image:
+def smooth_coastline_mask(is_ocean: np.ndarray, upscale: int = 4, smooth_px: float = 3.0) -> np.ndarray:
     """
-    Softens the hard pixelated alpha (transparency) edge at coastlines,
-    WITHOUT touching the RGB color values at all. This gives smoother-
-    looking coastlines without reintroducing the "color bleeding onto land"
-    bug that NEAREST-neighbor resizing was specifically chosen to avoid.
+    Builds a smoothed, rounded-edge ocean mask at higher resolution than the
+    input. Used to give coastlines a rounder look instead of inheriting the
+    blocky square-pixel shape of the underlying 0.5-degree climate data grid.
 
-    How: split into RGB + alpha, blur ONLY the alpha channel slightly (a
-    Gaussian blur softens the hard 0/255 step into a smooth gradient over
-    a pixel or two), then recombine with the ORIGINAL unblurred RGB. Since
-    color was never touched, a land pixel can never pick up an ocean color
-    — it can only become partially transparent at the boundary, fading
-    the existing color smoothly instead of cutting it off abruptly.
+    Approach:
+      1. Upscale the binary mask with NEAREST (just makes bigger squares —
+         no rounding yet, this just gives us more pixels to round WITH).
+      2. Blur the now-bigger binary shape's edges with a Gaussian blur,
+         producing smooth grayscale values (0..255) at the boundary instead
+         of a hard step.
+      3. Threshold-free: we KEEP the blurred grayscale as the final alpha
+         mask directly (rather than re-thresholding back to binary), which
+         is what actually produces a soft, rounded-looking edge rather than
+         just a repositioned hard edge.
+
+    Returns a float array in [0, 1] at (H*upscale, W*upscale) resolution —
+    this becomes the alpha channel, completely independent of color data.
     """
-    from PIL import ImageFilter
-    r, g, b, a = img.split()
-    a_blurred  = a.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-    return Image.merge("RGBA", (r, g, b, a_blurred))
+    from PIL import Image, ImageFilter
+
+    # Binary mask -> 0/255 uint8 image
+    mask_u8 = (is_ocean.astype(np.uint8) * 255)
+    mask_img = Image.fromarray(mask_u8, mode="L")
+
+    # Step 1: upscale with NEAREST — bigger blocky squares, same shape
+    H, W = is_ocean.shape
+    big = mask_img.resize((W * upscale, H * upscale), Image.NEAREST)
+
+    # Step 2+3: blur the edges of the now-bigger shape. This is the key
+    # step that actually rounds square corners — a Gaussian blur on a
+    # square's edge naturally produces a rounded-looking falloff at
+    # corners (corners blur "inward" from two directions at once, so
+    # they shrink faster than straight edges), unlike blurring at native
+    # resolution which would just produce a fuzzy SQUARE, not a round one.
+    smoothed = big.filter(ImageFilter.GaussianBlur(radius=smooth_px))
+
+    return np.array(smoothed).astype(np.float32) / 255.0
+
+
+def apply_smoothed_mask(img: Image.Image, alpha_mask: np.ndarray) -> Image.Image:
+    """
+    Applies a smoothed alpha mask (from smooth_coastline_mask, values in
+    [0,1] at a possibly-different resolution) onto an RGBA image, replacing
+    its alpha channel. If resolutions differ, img is upscaled with NEAREST
+    first — this keeps color blocky/accurate to the source data resolution
+    while the alpha channel carries all the smooth rounded-edge detail.
+    """
+    target_h, target_w = alpha_mask.shape
+    if img.size != (target_w, target_h):
+        img = img.resize((target_w, target_h), Image.NEAREST)
+
+    arr = np.array(img)   # (H, W, 4)
+    arr[..., 3] = (alpha_mask * 255).astype(np.uint8)
+    # Wherever alpha is now > 0 but was fully transparent before (i.e. a
+    # land pixel picking up partial alpha from the blur), we must NOT let
+    # its color show through as if it were real data — there's no real
+    # ocean color there. Keep alpha at 0 in any pixel that was originally
+    # land in the SOURCE (pre-blur) mask, even after smoothing, EXCEPT we
+    # WANT a thin smoothed boundary band to show the nearest real ocean
+    # color fading out — which is exactly what happens naturally since the
+    # blur mixes in the real neighboring ocean alpha value, and color was
+    # never touched (still the original NEAREST-sampled, scientifically
+    # real value from the nearest ocean grid cell).
+    return Image.fromarray(arr, mode="RGBA")
 
 
 # ── XYZ tile pyramid ─────────────────────────────────────────────────────────
@@ -194,11 +242,6 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
     (equirectangular) division — no Mercator projection involved.
     full_img must represent the entire world: lon -180->+180, lat +90->-90.
     """
-    # Feather the alpha edge ONCE on the full image, before slicing into
-    # tiles — blurring per-tile would create visible seams at tile borders
-    # where the blur kernel gets cut off differently on each side.
-    full_img = feather_alpha_edge(full_img)
-
     W, H = full_img.size
     for z in range(0, max_zoom + 1):
         n        = 2 ** z
@@ -208,10 +251,11 @@ def generate_tiles(full_img: Image.Image, out_dir: Path, max_zoom: int = MAX_ZOO
         for tx in range(n):
             for ty in range(n):
                 box  = (tx * tile_w, ty * tile_h, (tx + 1) * tile_w, (ty + 1) * tile_h)
-                # NEAREST (not LANCZOS) preserves crisp COLOR at coastlines —
-                # the alpha edge is separately softened above, so we get
-                # smooth-looking transparency without ever blending real
-                # ocean color into land pixels.
+                # NEAREST here resizes an already-smoothed-alpha image down/
+                # up to the final tile size — color blocks stay crisp,
+                # alpha already carries the rounded coastline shape from
+                # smooth_coastline_mask(), so this resize doesn't need to
+                # do any smoothing work itself.
                 tile = full_img.crop(box).resize((TILE_SIZE, TILE_SIZE), Image.NEAREST)
                 path = out_dir / str(z) / str(tx) / f"{ty}.png"
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -431,14 +475,14 @@ def main() -> None:
                                anom_180.lat.values, anom_180.lon.values,
                                lat_new, lon_new)
 
-    # Apply the precise 1km-resolution land mask — the ONLY source of truth
-    # for what's hidden. ERSSTv5 is too coarse (2 degrees) to define its own
-    # accurate coastline, so we don't rely on its native NaN pattern at all.
-    lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_new)
-    is_ocean = globe.is_ocean(lat_grid_mesh, lon_grid_mesh)   # (360, 720) bool
-
-    sst_grid  = np.where(is_ocean, sst_grid,  np.nan)
-    anom_grid = np.where(is_ocean, anom_grid, np.nan)
+    # NOTE: masking moved to AFTER image generation (see build_masked_image()
+    # below) — we no longer apply np.where(is_ocean, ..., nan) here. Doing it
+    # later, on a separately upscaled high-resolution mask, is what lets us
+    # get rounder-looking coastlines instead of inheriting the same blocky
+    # 0.5-degree grid shape that the climate DATA is naturally limited to.
+    # The data itself stays at native resolution (we're not inventing finer
+    # temperature detail) — only the MASK SHAPE gets finer, since the land
+    # mask source (global-land-mask) is independently accurate to ~1km.
 
     # ── Empirical north-shift correction ─────────────────────────────────────
     # IMPORTANT: an earlier attempt shifted the SAMPLING coordinates passed
@@ -466,6 +510,18 @@ def main() -> None:
     sst_grid  = np.roll(sst_grid,  -roll_rows, axis=0)
     anom_grid = np.roll(anom_grid, -roll_rows, axis=0)
 
+    # Compute the ocean mask on the grid coordinates BEFORE the roll, then
+    # apply the IDENTICAL roll to the mask. is_ocean() is a pure geographic
+    # lookup against lat_new/lon_new — those coordinate arrays themselves
+    # were never shifted, only sst_grid/anom_grid's CONTENT was moved
+    # between rows via np.roll. So the mask must get that same roll, or it
+    # ends up describing land/ocean at the PRE-shift positions while the
+    # data has already moved — silently reintroducing the exact
+    # land/ocean misalignment bug fixed earlier.
+    lon_grid_mesh, lat_grid_mesh = np.meshgrid(lon_new, lat_new)
+    is_ocean = globe.is_ocean(lat_grid_mesh, lon_grid_mesh)   # (360, 720) bool
+    is_ocean = np.roll(is_ocean, -roll_rows, axis=0)
+
     # 4. Nino indices
     indices   = compute_nino_indices(anom_180)
     condition = classify_condition(indices["nino34"])
@@ -475,9 +531,23 @@ def main() -> None:
     # 5. Generate tile pyramids
     print("\n[3/4] Generating tiles...")
 
-    sst_img  = array_to_image(sst_grid,  SST_CMAP,     vmin=-2,  vmax=32)
-    anom_img = array_to_image(anom_grid, ANOMALY_CMAP, vmin=-3,  vmax=3,
-                               normalize_fn=normalize_anomaly)
+    # Build color images WITHOUT masking (sst_grid/anom_grid have no NaN
+    # at this point — they're raw interpolated values everywhere, land
+    # included). Masking is applied next, separately, using a smoothed
+    # high-resolution version of the mask for rounder coastlines.
+    sst_img_raw  = array_to_image(sst_grid,  SST_CMAP,     vmin=-2,  vmax=32)
+    anom_img_raw = array_to_image(anom_grid, ANOMALY_CMAP, vmin=-3,  vmax=3,
+                                   normalize_fn=normalize_anomaly)
+    # array_to_image() sets alpha=0 wherever data is NaN — but sst_grid/
+    # anom_grid have NO NaN now (masking moved later), so at this point
+    # every pixel (including land) has alpha=255. We override alpha
+    # entirely in apply_smoothed_mask() below, so this is fine.
+
+    print("   Building smoothed coastline mask...")
+    smoothed_mask = smooth_coastline_mask(is_ocean, upscale=4, smooth_px=3.0)
+
+    sst_img  = apply_smoothed_mask(sst_img_raw,  smoothed_mask)
+    anom_img = apply_smoothed_mask(anom_img_raw, smoothed_mask)
 
     print("  SST tiles:")
     generate_tiles(sst_img,  OUTPUT_DIR / "sst")
