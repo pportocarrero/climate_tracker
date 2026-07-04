@@ -1,12 +1,12 @@
 {
-  "date": "2026-05",
-  "release_tag": "tiles-2026-05",
-  "generated": "2026-06-30T10:07:46.115809+00:00",
+  "date": "2026-06",
+  "release_tag": "tiles-2026-06",
+  "generated": "2026-07-04T09:05:49.127066+00:00",
   "indices": {
-    "nino12": 0.66,
-    "nino3": 0.26,
-    "nino34": 0.19,
-    "nino4": 0.3
+    "nino12": 0.85,
+    "nino3": 0.31,
+    "nino34": 0.37,
+    "nino4": 0.11
   },
   "condition": "neutral",
   "tile_sets": {
