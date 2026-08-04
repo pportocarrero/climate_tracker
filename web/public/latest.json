@@ -1,14 +1,14 @@
 {
-  "date": "2026-06",
-  "release_tag": "tiles-2026-06",
-  "generated": "2026-07-31T09:24:43.432001+00:00",
+  "date": "2026-07",
+  "release_tag": "tiles-2026-07",
+  "generated": "2026-08-04T09:21:13.389822+00:00",
   "indices": {
-    "nino12": 0.85,
-    "nino3": 0.31,
-    "nino34": 0.37,
-    "nino4": 0.11
+    "nino12": 0.79,
+    "nino3": 0.64,
+    "nino34": 0.69,
+    "nino4": -0.17
   },
-  "condition": "neutral",
+  "condition": "weak-el-nino",
   "tile_sets": {
     "sst": "sst/{z}/{x}/{y}.png",
     "anomaly": "anomaly/{z}/{x}/{y}.png"
