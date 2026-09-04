@@ -193,5 +193,10 @@
     "date": "2026-07",
     "condition": "weak-el-nino",
     "nino34": 0.69
+  },
+  {
+    "date": "2026-08",
+    "condition": "weak-el-nino",
+    "nino34": 0.73
   }
 ]
